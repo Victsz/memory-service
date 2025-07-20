@@ -18,7 +18,7 @@ def test_memory_store():
     # Create temporary directory for testing
     with tempfile.TemporaryDirectory() as temp_dir:
         # Override config for testing
-        temp_dir = "/tmp/victest"
+        
         config.data_dir = temp_dir
         import shutil
         config.memories_dir = os.path.join(temp_dir, "memories")
@@ -42,14 +42,14 @@ def test_memory_store():
             # Test 1: Store a memory
             print("\n📝 Test 1: Storing a memory...")
             memory_input = MemoryInput(
-                content="I learned about LlamaIndex today. It's a great framework for building RAG applications.",
+                content="I learned about LlamaIndex today.",
                 user_id="test_user_1",
                 metadata={"source": "documentation", "category": "learning"}
             )
             
             stored_memory = memory_store.store_memory(memory_input)
             print(f"✅ Memory stored with ID: {stored_memory.id}")
-            print(f"   Content: {stored_memory.content[:50]}...")
+            print(f"   Content {len(stored_memory.content)} : {stored_memory.content=}...")
             print(f"   Tags: {stored_memory.tags}")
             print(f"   User ID: {stored_memory.user_id}")
             
@@ -125,11 +125,9 @@ def test_memory_store():
             print(f"✅ Statistics:")
             print(f"   Total memories: {stats['total_memories']}")
             print(f"   Total users: {stats['total_users']}")
-            print(f"   Data directory: {stats['data_directory']}")
-            
-            all = list(Path(config.memories_dir).parent.rglob("*"))
-            all_str ="\n".join([a.absolute() for a in all])
-            print(f"   Total files in data directory: {len(all)}")
+            print(f"   Data directory: {stats['data_directory']}")            
+
+
             # Test 9: Delete memory
             print("\n🗑️  Test 9: Deleting memory...")
             deleted = memory_store.delete_memory(stored_memory3.id, "test_user_2")

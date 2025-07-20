@@ -13,9 +13,29 @@ from llama_index.core.storage.index_store import SimpleIndexStore
 from llama_index.core.vector_stores.simple import SimpleVectorStore
 from llama_index.embeddings.openai_like import OpenAILikeEmbedding
 from llama_index.llms.openai_like import OpenAILike
+from llama_index.core.bridge.pydantic import BaseModel, Field
+from llama_index.core.prompts import PromptTemplate
+from llama_index.core.program import LLMTextCompletionProgram
+from llama_index.core.output_parsers import PydanticOutputParser
 
 from .models import Memory, MemoryInput, MemoryQuery, MemoryResult, MemoryResponse
 from .config import config
+
+
+class ExpandedContent(BaseModel):
+    """Structured model for expanded content output."""
+    
+    enhanced_content: str = Field(
+        description="The enhanced and expanded version of the original content with clear explanations for key concepts"
+    )
+
+
+class GeneratedTags(BaseModel):
+    """Structured model for tag generation output."""
+    
+    tags: List[str] = Field(
+        description="A list of relevant tags for the content, maximum 5 tags"
+    )
 
 
 class MemoryStore:
@@ -124,31 +144,105 @@ class MemoryStore:
             print("Created new index")
     
     def _generate_tags(self, content: str) -> List[str]:
-        """Generate tags for content using LLM."""
-        try:
-            prompt = config.tag_generation_prompt.format(
-                max_tags=config.max_tags,
-                common_tags = config.common_tags, 
-                content=content
-            )
-            response = self.llm.complete(prompt)
-            tags_text = response.text.strip()
-            
-            # Parse comma-separated tags
-            tags = [tag.strip() for tag in tags_text.split(",") if tag.strip()]
-            return tags[:config.max_tags]
-        except Exception as e:
-            print(f"Error generating tags: {e}")
-            return []
+        """Generate tags for content using LLM structured output with retry logic."""
+        max_retries = 2
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Create LLMTextCompletionProgram for non-function-calling models
+                program = LLMTextCompletionProgram.from_defaults(
+                    output_parser=PydanticOutputParser(output_cls=GeneratedTags),
+                    prompt_template_str=(
+                        "Generate relevant tags for the following content. "
+                        "Generate a maximum of {max_tags} tags, can be fewer, that best describe the content."
+                        "Consider 1 or 2 tags choosing from when appropriate: {common_tags}. The tags should be closly relevant to the content. \n\n"                        
+                        "Content: {content}\n\n"
+                        "Return your response as a JSON object with a 'tags' field containing an array of strings."
+                    ),
+                    llm=self.llm,
+                    verbose=False
+                )
+                
+                # Execute the program to get structured output
+                response = program(
+                    max_tags=config.max_tags,
+                    common_tags=config.common_tags,
+                    content=content
+                )
+                
+                # Extract tags from structured response and limit to max_tags
+                return response.tags[:config.max_tags]
+                
+            except Exception as e:
+                print(f"Error generating tags (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                if attempt == max_retries:
+                    print("All tag generation attempts failed, returning empty list")
+                    return []
+                else:
+                    print(f"Retrying tag generation...")
+                    continue
     
 
     
+
+    def _expand_short_content(self, content: str) -> str:
+        """Expand short content using LLM structured output to enhance context and meaning.
+        
+        For short content (<100 words), this method uses LLMTextCompletionProgram
+        to expand the content while preserving the original meaning, adding explanations 
+        for key concepts. The expansion is limited to 500 tokens.
+        
+        If structured output fails, gracefully falls back to using the original content.
+        """
+        # Count words (rough approximation)
+        word_count = len(content.split())
+        
+        # Only expand if content is short
+        if word_count < 100:
+            try:
+                # Create LLMTextCompletionProgram for non-function-calling models
+                program = LLMTextCompletionProgram.from_defaults(
+                    output_parser=PydanticOutputParser(output_cls=ExpandedContent),
+                    prompt_template_str=(
+                        "Enhance and expand the following short content while preserving its original meaning. "
+                        "Add clear explanations for key concepts and ideas to make the content more comprehensive. "
+                        "Keep the expansion concise (within 500 tokens) and focus on clarity and depth.\n\n"
+                        "Original content: {content}\n\n"
+                        "Return your response as a JSON object with an 'enhanced_content' field containing the expanded text."
+                    ),
+                    llm=self.llm,
+                    verbose=False
+                )
+                
+                # Execute the program to get structured output
+                response = program(content=content)
+                
+                # Extract the enhanced content from the structured response
+                expanded_content = response.enhanced_content
+                
+                # Add original content as reference
+                final_content = f"{content}\n\n---\n\nExpanded explanation:\n{expanded_content}"
+                return final_content
+            except Exception as e:
+                print(f"Content expansion failed, using original content: {e}")
+                # Gracefully fallback to original content without expansion
+                return content
+        
+        return content
+    
     def store_memory(self, memory_input: MemoryInput, custom_tags: Optional[List[str]] = None) -> Memory:
-        """Store a new memory with optional custom tags."""
+        """Store a new memory with optional custom tags.
+        
+        For short content (<100 words), automatically expands the content using LLM
+        to enhance context and meaning while preserving the original content.
+        """
+        # Expand short content if needed
+        expanded_content = self._expand_short_content(memory_input.content)
+        
         # Create memory object
         memory = Memory(
             id=str(uuid.uuid4()),
-            content=memory_input.content,
+            content=expanded_content,
             user_id=memory_input.user_id,
             metadata=memory_input.metadata or {}
         )

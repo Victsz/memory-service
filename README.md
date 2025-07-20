@@ -284,6 +284,27 @@ src/memserv/
 3. **OpenAI-like Compatibility**: Works with various LLM providers
 4. **User Isolation**: All operations are scoped to user IDs
 5. **Extensible**: Easy to add new interfaces or modify existing ones
+6. **Robust Error Handling**: Structured output with retry logic and graceful fallbacks
+
+### AI-Powered Features
+
+#### Automatic Tag Generation
+- Uses LlamaIndex structured output with Pydantic models
+- Implements retry logic (up to 2 retries) for reliability
+- Falls back to empty tags if all attempts fail
+- Considers common tags for consistency
+
+#### Content Enhancement
+- Automatically expands short content (<100 words) for better context
+- Uses structured output to ensure clean, formatted responses
+- Gracefully falls back to original content if enhancement fails
+- Preserves original content with clear separation from enhancements
+
+#### Error Resilience
+- **Tag Generation**: Retries on failure, logs attempts, returns empty list as fallback
+- **Content Expansion**: Single attempt with graceful fallback to original content
+- **Structured Output**: Uses `LLMTextCompletionProgram` with `PydanticOutputParser` for non-function-calling models
+- **Data Integrity**: Never loses original content due to AI processing failures
 
 ## License
 
