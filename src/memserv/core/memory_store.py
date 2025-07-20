@@ -47,18 +47,8 @@ class MemoryStore:
         
         print(f"📁 Data directories created: {self.data_dir}")
         
-        # Initialize LLM and embedding model
+        # Initialize LLM and embedding model following LlamaIndex guidance
         print("🤖 Initializing LLM and embedding models...")
-        self.llm = OpenAILike(
-            model=config.llm_model,
-            api_base=config.api_base,
-            api_key=config.api_key,
-            context_window=config.context_window,
-            temperature=config.temperature,
-            is_chat_model=True,
-            is_function_calling_model=False,
-        )
-        
         self.embed_model = OpenAILikeEmbedding(
             model_name=config.embedding_model,
             api_base=config.api_base,
@@ -66,9 +56,19 @@ class MemoryStore:
             embed_batch_size=config.embed_batch_size,
         )
         
+        self.llm = OpenAILike(
+            model=config.llm_model,
+            api_base=config.api_base,
+            api_key=config.api_key,
+            context_window=config.context_window,
+            is_chat_model=True,
+            is_function_calling_model=False,
+            temperature=config.temperature,
+        )
+        
         # Set global settings
-        Settings.llm = self.llm
         Settings.embed_model = self.embed_model
+        Settings.llm = self.llm
         
         print(f"✅ Models initialized - LLM: {config.llm_model}, Embedding: {config.embedding_model}")
         
@@ -128,6 +128,7 @@ class MemoryStore:
         try:
             prompt = config.tag_generation_prompt.format(
                 max_tags=config.max_tags,
+                common_tags = config.common_tags, 
                 content=content
             )
             response = self.llm.complete(prompt)
@@ -140,18 +141,10 @@ class MemoryStore:
             print(f"Error generating tags: {e}")
             return []
     
-    def _save_memory_file(self, memory: Memory) -> str:
-        """Save memory to file and return file path."""
-        filename = f"{memory.user_id}_{memory.id}.json"
-        filepath = self.memories_dir / filename
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(memory.model_dump(), f, ensure_ascii=False, indent=2, default=str)
-        
-        return str(filepath)
+
     
-    def store_memory(self, memory_input: MemoryInput) -> Memory:
-        """Store a new memory."""
+    def store_memory(self, memory_input: MemoryInput, custom_tags: Optional[List[str]] = None) -> Memory:
+        """Store a new memory with optional custom tags."""
         # Create memory object
         memory = Memory(
             id=str(uuid.uuid4()),
@@ -160,11 +153,18 @@ class MemoryStore:
             metadata=memory_input.metadata or {}
         )
         
-        # Generate tags
-        memory.tags = self._generate_tags(memory.content)
+        # Generate tags using LLM
+        auto_generated_tags = self._generate_tags(memory.content)
         
-        # Save to file
-        filepath = self._save_memory_file(memory)
+        # Combine auto-generated tags with custom tags
+        all_tags = auto_generated_tags.copy()
+        if custom_tags:
+            # Add custom tags, avoiding duplicates
+            for tag in custom_tags:
+                if tag.strip() and tag.strip() not in all_tags:
+                    all_tags.append(tag.strip())
+        
+        memory.tags = all_tags
         
         # Create document for indexing
         doc_metadata = {
@@ -172,7 +172,7 @@ class MemoryStore:
             "user_id": memory.user_id,
             "tags": memory.tags,
             "created_at": memory.created_at.isoformat(),
-            "filepath": filepath
+            "metadata": memory.metadata
         }
         
         document = Document(
@@ -215,21 +215,24 @@ class MemoryStore:
                 if not any(tag in node_tags for tag in query.tags):
                     continue
             
-            # Load full memory from file
+            # Create Memory object directly from node data (no file loading needed)
             try:
-                filepath = node.metadata.get("filepath")
-                if filepath and os.path.exists(filepath):
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        memory_data = json.load(f)
-                    
-                    memory = Memory(**memory_data)
-                    result = MemoryResult(
-                        memory=memory,
-                        score=node.score or 0.0
-                    )
-                    results.append(result)
+                memory = Memory(
+                    id=node.metadata.get("memory_id"),
+                    content=node.text,
+                    user_id=node.metadata.get("user_id"),
+                    tags=node.metadata.get("tags", []),
+                    created_at=datetime.fromisoformat(node.metadata.get("created_at")),
+                    metadata=node.metadata.get("metadata", {})
+                )
+                
+                result = MemoryResult(
+                    memory=memory,
+                    score=node.score or 0.0
+                )
+                results.append(result)
             except Exception as e:
-                print(f"Error loading memory from {filepath}: {e}")
+                print(f"Error creating memory from node: {e}")
                 continue
             
             if len(results) >= query.limit:
@@ -240,18 +243,38 @@ class MemoryStore:
             total=len(results)
         )
     
-    def get_user_memories(self, user_id: str, limit: int = 10) -> List[Memory]:
-        """Get all memories for a user."""
-        memories = []
+    def get_user_memories(self, user_id: str, limit: int = 10, tags: Optional[List[str]] = None) -> List[Memory]:
+        """Get all memories for a user with optional tag filtering using LlamaIndex storage context."""
+        # Access the docstore to get all documents
+        docstore = self.index.storage_context.docstore
+        all_docs = docstore.docs
         
-        for filepath in self.memories_dir.glob(f"{user_id}_*.json"):
+        # Filter documents by user_id and optionally by tags
+        memories = []
+        for doc_id, doc in all_docs.items():
+            # Filter by user_id
+            if doc.metadata.get("user_id") != user_id:
+                continue
+            
+            # Filter by tags if specified
+            if tags:
+                doc_tags = doc.metadata.get("tags", [])
+                if not any(tag in doc_tags for tag in tags):
+                    continue
+            
+            # Create Memory object from document metadata and text
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    memory_data = json.load(f)
-                memory = Memory(**memory_data)
+                memory = Memory(
+                    id=doc.metadata.get("memory_id"),
+                    content=doc.text,
+                    user_id=doc.metadata.get("user_id"),
+                    tags=doc.metadata.get("tags", []),
+                    created_at=datetime.fromisoformat(doc.metadata.get("created_at")),
+                    metadata=doc.metadata.get("metadata", {})
+                )
                 memories.append(memory)
             except Exception as e:
-                print(f"Error loading memory from {filepath}: {e}")
+                print(f"Error creating memory from document {doc_id}: {e}")
                 continue
         
         # Sort by creation time (newest first)
@@ -269,45 +292,75 @@ class MemoryStore:
         return sorted(list(tags))
     
     def delete_memory(self, memory_id: str, user_id: str) -> bool:
-        """Delete a memory by ID and user ID."""
-        filepath = self.memories_dir / f"{user_id}_{memory_id}.json"
+        """Delete a memory by ID and user ID using LlamaIndex storage context."""
+        # Access the docstore to find and delete the specific document
+        docstore = self.index.storage_context.docstore
+        all_docs = docstore.docs
         
-        if filepath.exists():
+        # Find the document with matching memory_id and user_id
+        doc_to_delete = None
+        for doc_id, doc in all_docs.items():
+            if (doc.metadata.get("memory_id") == memory_id and 
+                doc.metadata.get("user_id") == user_id):
+                doc_to_delete = doc_id
+                break
+        
+        if doc_to_delete:
             try:
-                filepath.unlink()
-                # Note: We don't remove from vector index as it's complex
-                # In production, you might want to rebuild the index periodically
+                # Delete from docstore
+                docstore.delete_document(doc_to_delete)
+                
+                # Persist the updated index
+                self.index.storage_context.persist(persist_dir=str(self.index_dir))
+                
                 return True
             except Exception as e:
-                print(f"Error deleting memory file {filepath}: {e}")
+                print(f"Error deleting memory from index: {e}")
                 return False
+        
         return False
     
     def get_memory_by_id(self, memory_id: str, user_id: str) -> Optional[Memory]:
-        """Get a specific memory by ID and user ID."""
-        filepath = self.memories_dir / f"{user_id}_{memory_id}.json"
+        """Get a specific memory by ID and user ID using LlamaIndex storage context."""
+        # Access the docstore to find the specific document
+        docstore = self.index.storage_context.docstore
+        all_docs = docstore.docs
         
-        if filepath.exists():
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    memory_data = json.load(f)
-                return Memory(**memory_data)
-            except Exception as e:
-                print(f"Error loading memory from {filepath}: {e}")
-                return None
+        # Find the document with matching memory_id and user_id
+        for doc_id, doc in all_docs.items():
+            if (doc.metadata.get("memory_id") == memory_id and 
+                doc.metadata.get("user_id") == user_id):
+                
+                # Create Memory object from document
+                try:
+                    memory = Memory(
+                        id=doc.metadata.get("memory_id"),
+                        content=doc.text,
+                        user_id=doc.metadata.get("user_id"),
+                        tags=doc.metadata.get("tags", []),
+                        created_at=datetime.fromisoformat(doc.metadata.get("created_at")),
+                        metadata=doc.metadata.get("metadata", {})
+                    )
+                    return memory
+                except Exception as e:
+                    print(f"Error creating memory from document {doc_id}: {e}")
+                    break
+        
         return None
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get storage statistics."""
-        total_memories = 0
+        """Get storage statistics using LlamaIndex storage context."""
+        # Access the docstore to get all documents
+        docstore = self.index.storage_context.docstore
+        all_docs = docstore.docs
+        
+        total_memories = len(all_docs)
         users = set()
         
-        for filepath in self.memories_dir.glob("*.json"):
-            total_memories += 1
-            # Extract user_id from filename pattern: {user_id}_{memory_id}.json
-            filename = filepath.stem
-            if "_" in filename:
-                user_id = filename.split("_")[0]
+        # Extract unique user IDs from document metadata
+        for doc_id, doc in all_docs.items():
+            user_id = doc.metadata.get("user_id")
+            if user_id:
                 users.add(user_id)
         
         return {

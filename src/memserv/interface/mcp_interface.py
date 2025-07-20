@@ -38,16 +38,17 @@ interface = MCPMemoryInterface()
 
 
 @mcp.tool
-def store_memory(content: str, user_id: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Store a new memory with auto-generated tags.
+def store_memory(content: str, user_id: str, metadata: Optional[Dict[str, Any]] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Store a new memory with auto-generated tags and optional custom tags.
     
     Args:
         content: The content to remember
         user_id: User identifier
         metadata: Additional metadata (optional)
+        tags: Optional custom tags to add to auto-generated tags
     
     Returns:
-        Dict containing success status, stored memory data, and message
+        Dict containing success status, stored memory data with combined tags, and message
     """
     try:
         memory_input = MemoryInput(
@@ -55,11 +56,15 @@ def store_memory(content: str, user_id: str, metadata: Optional[Dict[str, Any]] 
             user_id=user_id,
             metadata=metadata or {}
         )
-        memory = interface.memory_store.store_memory(memory_input)
+        memory = interface.memory_store.store_memory(memory_input, custom_tags=tags)
         return {
             "success": True,
             "memory": memory.model_dump(mode='json'),
-            "message": f"Memory stored with ID: {memory.id}"
+            "message": f"Memory stored with ID: {memory.id}",
+            "tags_info": {
+                "total_tags": len(memory.tags),
+                "custom_tags_added": len(tags) if tags else 0
+            }
         }
     except Exception as e:
         return {
@@ -105,23 +110,29 @@ def query_memories(query: str, user_id: str, limit: int = 5, tags: Optional[List
 
 
 @mcp.tool
-def get_user_memories(user_id: str, limit: int = 10) -> Dict[str, Any]:
-    """Get all memories for a specific user.
+def get_user_memories(user_id: str, limit: int = 10, tags: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Get all memories for a specific user with optional tag filtering.
     
     Args:
         user_id: User identifier
         limit: Maximum number of results (default: 10)
+        tags: Optional list of tags to filter memories by
     
     Returns:
-        Dict containing success status, memories list, count, and message
+        Dict containing success status, filtered memories list, count, and message
     """
     try:
-        memories = interface.memory_store.get_user_memories(user_id, limit)
+        memories = interface.memory_store.get_user_memories(user_id, limit, tags)
+        filter_info = f" with tags {tags}" if tags else ""
         return {
             "success": True,
             "memories": [memory.model_dump(mode='json') for memory in memories],
             "count": len(memories),
-            "message": f"Retrieved {len(memories)} memories for user {user_id}"
+            "message": f"Retrieved {len(memories)} memories for user {user_id}{filter_info}",
+            "filter_applied": {
+                "tags": tags or [],
+                "filtered": bool(tags)
+            }
         }
     except Exception as e:
         return {
@@ -197,17 +208,17 @@ class MCPMemoryInterface:
     def __init__(self):
         self.memory_store = MemoryStore.get_instance()
     
-    def store_memory_tool(self, content: str, user_id: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    def store_memory_tool(self, content: str, user_id: str, metadata: Dict[str, Any] = None, tags: List[str] = None) -> Dict[str, Any]:
         """Legacy wrapper for store_memory tool."""
-        return store_memory(content, user_id, metadata)
+        return store_memory(content, user_id, metadata, tags)
     
     def query_memories_tool(self, query: str, user_id: str, limit: int = 5, tags: List[str] = None) -> Dict[str, Any]:
         """Legacy wrapper for query_memories tool."""
         return query_memories(query, user_id, limit, tags)
     
-    def get_user_memories_tool(self, user_id: str, limit: int = 10) -> Dict[str, Any]:
+    def get_user_memories_tool(self, user_id: str, limit: int = 10, tags: List[str] = None) -> Dict[str, Any]:
         """Legacy wrapper for get_user_memories tool."""
-        return get_user_memories(user_id, limit)
+        return get_user_memories(user_id, limit, tags)
 
 
 def get_mcp_tools():
@@ -216,7 +227,7 @@ def get_mcp_tools():
     
     return {
         "store_memory": {
-            "description": "Store a new memory with auto-generated tags",
+            "description": "Store a new memory with auto-generated tags and optional custom tags",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -231,6 +242,11 @@ def get_mcp_tools():
                     "metadata": {
                         "type": "object",
                         "description": "Additional metadata (optional)"
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional custom tags to add to auto-generated tags"
                     }
                 },
                 "required": ["content", "user_id"]
@@ -265,7 +281,7 @@ def get_mcp_tools():
             "handler": interface.query_memories_tool
         },
         "get_user_memories": {
-            "description": "Get all memories for a specific user",
+            "description": "Get all memories for a specific user with optional tag filtering",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -276,6 +292,11 @@ def get_mcp_tools():
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of results (default: 10)"
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of tags to filter memories by"
                     }
                 },
                 "required": ["user_id"]

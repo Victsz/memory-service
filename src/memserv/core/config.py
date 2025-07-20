@@ -29,8 +29,12 @@ class Config(BaseModel):
     
     # LLM settings for tagging
     max_tags: int = Field(default=5)
+    common_tags:list[str] = Field(default=["tech","life","investment","knowledge","todo","relationship"], alias="common_tags"
+    ,type=list[str])
     tag_generation_prompt: str = Field(
-        default="""Based on the following content, generate up to {max_tags} relevant tags that describe the main topics, themes, or categories. 
+        default="""
+    
+        Based on the following content, generate up to {max_tags} relevant tags that describe the main topics, themes, or categories. Choose 1 or 2 tags from {common_tags}. 
 Return only the tags as a comma-separated list, no explanations.
 
 Content: {content}

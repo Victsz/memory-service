@@ -3,7 +3,7 @@
 import asyncio
 import sys
 from pathlib import Path
-
+TEST_PORT = 7999
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
@@ -88,13 +88,14 @@ async def test_mcp_server_in_memory():
 
 async def test_mcp_server_http():
     """Test MCP server via HTTP (requires running server)."""
+    
     print("\n🌐 Testing FastMCP Memory Service (HTTP)")
     print("=" * 50)
-    print("Note: This requires the MCP server to be running on http://127.0.0.1:8001/mcp")
+    print(f"Note: This requires the MCP server to be running on http://127.0.0.1:{TEST_PORT}/mcp")
     
     try:
         # Test with HTTP transport
-        async with Client("http://127.0.0.1:8001/mcp") as client:
+        async with Client(f"http://127.0.0.1:{TEST_PORT}/mcp") as client:
             print("✅ Connected to HTTP MCP server")
             
             # Test ping
@@ -128,7 +129,7 @@ def main():
     
     print("\n🎉 Test suite completed!")
     print("\nTo test HTTP functionality:")
-    print("1. Run: python main.py --mode mcp --port 8001")
+    print(f"1. Run: python main.py --mode mcp --port {TEST_PORT}")
     print("2. Then run this test script again")
 
 

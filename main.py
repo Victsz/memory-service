@@ -1,6 +1,9 @@
 """Main entry point for memory service."""
 import argparse
 import asyncio
+import logging
+import os
+from logging.handlers import TimedRotatingFileHandler
 import uvicorn
 from src.memserv.interface.api import app
 from src.memserv.interface.mcp_interface import mcp
@@ -8,28 +11,74 @@ from src.memserv.core.config import config
 from src.memserv.core.memory_store import MemoryStore
 
 
+def setup_logging(log_level: str = "info"):
+    """Setup logging with rotation, keeping logs for 7 days."""
+    # Create logs directory if it doesn't exist
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Configure log level
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Setup root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(numeric_level)
+    
+    # Remove existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Setup rotating file handler (daily rotation, keep 7 days)
+    file_handler = TimedRotatingFileHandler(
+        filename=os.path.join(log_dir, "memory-service.log"),
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8"
+    )
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(numeric_level)
+    root_logger.addHandler(file_handler)
+    
+    # Setup console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    console_handler.setLevel(numeric_level)
+    root_logger.addHandler(console_handler)
+    
+    # Log the setup completion
+    logging.info(f"Logging setup completed - Level: {log_level.upper()}, Retention: 7 days")
+    logging.info(f"Log files location: {os.path.abspath(log_dir)}")
+
+
 def initialize_service():
     """预初始化服务，避免第一次请求时的延迟。"""
     assert config.api_key, (f"   - API Key: {'✅ Set' if config.api_key else '❌ Not Set'}")
-    print("🔧 Pre-initializing Memory Service...")
-    print(f"🔧 Configuration:")
-    print(f"   - API Base: {config.api_base}")
-    print(f"   - LLM Model: {config.llm_model}")
-    print(f"   - Embedding Model: {config.embedding_model}")
-    print(f"   - Data Directory: {config.data_dir}")
+    logging.info("🔧 Pre-initializing Memory Service...")
+    logging.info(f"🔧 Configuration:")
+    logging.info(f"   - API Base: {config.api_base}")
+    logging.info(f"   - LLM Model: {config.llm_model}")
+    logging.info(f"   - Embedding Model: {config.embedding_model}")
+    logging.info(f"   - Data Directory: {config.data_dir}")
     
     # 预初始化 MemoryStore（单例模式）
     memory_store = MemoryStore.get_instance()
     
-    print("✅ Memory Service pre-initialization completed!")
+    logging.info("✅ Memory Service pre-initialization completed!")
     return memory_store
 
 
 def run_fastapi_server(host: str, port: int, reload: bool, log_level: str):
     """Run the FastAPI server."""
-    print(f"🚀 Starting Memory Service FastAPI on {host}:{port}")
-    print(f"📚 API Documentation: http://{host}:{port}/docs")
-    print(f"🌐 FastAPI Server starting at http://{host}:{port}")
+    logging.info(f"🚀 Starting Memory Service FastAPI on {host}:{port}")
+    logging.info(f"📚 API Documentation: http://{host}:{port}/docs")
+    logging.info(f"🌐 FastAPI Server starting at http://{host}:{port}")
     
     uvicorn.run(
         app,
@@ -42,8 +91,8 @@ def run_fastapi_server(host: str, port: int, reload: bool, log_level: str):
 
 def run_mcp_server(host: str, port: int, path: str = "/mcp"):
     """Run the FastMCP server with streamhttp transport."""
-    print(f"🔧 Starting Memory Service MCP Server on {host}:{port}{path}")
-    print(f"🔗 MCP Endpoint: http://{host}:{port}{path}")
+    logging.info(f"🔧 Starting Memory Service MCP Server on {host}:{port}{path}")
+    logging.info(f"🔗 MCP Endpoint: http://{host}:{port}{path}")
     
     # Run the FastMCP server with streamhttp transport
     mcp.run(
@@ -57,8 +106,8 @@ def run_mcp_server(host: str, port: int, path: str = "/mcp"):
 
 async def run_mcp_server_async(host: str, port: int, path: str = "/mcp"):
     """Run the FastMCP server asynchronously with streamhttp transport."""
-    print(f"🔧 Starting Memory Service MCP Server (async) on {host}:{port}{path}")
-    print(f"🔗 MCP Endpoint: http://{host}:{port}{path}")
+    logging.info(f"🔧 Starting Memory Service MCP Server (async) on {host}:{port}{path}")
+    logging.info(f"🔗 MCP Endpoint: http://{host}:{port}{path}")
     
     # Run the FastMCP server asynchronously
     await mcp.run_async(
@@ -82,16 +131,20 @@ def main():
     # MCP server options
     parser.add_argument("--mode", choices=["fastapi", "mcp", "both"], default="both", 
                        help="Server mode: fastapi (REST API), mcp (MCP server), or both")
-    parser.add_argument("--mcp-port", type=int, default=8001, help="Port for MCP server (when running both)")
+    parser.add_argument("--mcp-port", type=int, default=None, help="Port for MCP server")
     parser.add_argument("--mcp-path", default="/mcp", help="Path for MCP endpoint")
     
     args = parser.parse_args()
+    
+    # Setup logging first
+    setup_logging(args.log_level)
+    logging.info("Memory Service starting up...")
     
     # 预初始化服务（除非在开发模式下使用 reload）
     if not args.reload and not args.skip_warmup:
         initialize_service()
     else:
-        print("⚠️  Skipping pre-initialization in reload/skip-warmup mode")
+        logging.info("⚠️  Skipping pre-initialization in reload/skip-warmup mode")
     
     if args.mode == "fastapi":
         # Run only FastAPI server
@@ -99,13 +152,13 @@ def main():
         
     elif args.mode == "mcp":
         # Run only MCP server
-        run_mcp_server(args.host, args.port, args.mcp_path)
+        run_mcp_server(args.host, args.mcp_port or args.port, args.mcp_path)
         
     elif args.mode == "both":
         # Run both servers (FastAPI and MCP)
-        print("🚀 Starting both FastAPI and MCP servers...")
-        print(f"📚 FastAPI Documentation: http://{args.host}:{args.port}/docs")
-        print(f"🔗 MCP Endpoint: http://{args.host}:{args.mcp_port}{args.mcp_path}")
+        logging.info("🚀 Starting both FastAPI and MCP servers...")
+        logging.info(f"📚 FastAPI Documentation: http://{args.host}:{args.port}/docs")
+        logging.info(f"🔗 MCP Endpoint: http://{args.host}:{args.mcp_port}{args.mcp_path}")
         
         # This would require running both servers concurrently
         # For now, we'll run MCP server on a different port
@@ -123,7 +176,7 @@ def main():
         try:
             run_mcp_server(args.host, args.mcp_port, args.mcp_path)
         except KeyboardInterrupt:
-            print("\n🛑 Shutting down servers...")
+            logging.info("\n🛑 Shutting down servers...")
 
 
 def run_mcp_only():
@@ -135,8 +188,8 @@ def run_mcp_only():
 def run_mcp_stdio():
     """Run MCP server with STDIO transport (for MCP clients like Claude Desktop)."""
     initialize_service()
-    print("🔧 Starting Memory Service MCP Server with STDIO transport")
-    print("📡 Ready for MCP client connections via STDIO")
+    logging.info("🔧 Starting Memory Service MCP Server with STDIO transport")
+    logging.info("📡 Ready for MCP client connections via STDIO")
     
     # Run with STDIO transport for MCP clients
     mcp.run(transport="stdio")

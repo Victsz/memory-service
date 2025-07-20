@@ -11,17 +11,21 @@ from src.memserv.core.config import config
 
 
 def test_memory_store():
+
     """Test MemoryStore functionality."""
     print("🧪 Starting MemoryStore tests...")
     
     # Create temporary directory for testing
     with tempfile.TemporaryDirectory() as temp_dir:
         # Override config for testing
+        temp_dir = "/tmp/victest"
         config.data_dir = temp_dir
+        import shutil
         config.memories_dir = os.path.join(temp_dir, "memories")
         config.index_dir = os.path.join(temp_dir, "index")
         
         print(f"📁 Using temporary directory: {temp_dir}")
+        
         
         try:
             # Initialize MemoryStore
@@ -123,6 +127,9 @@ def test_memory_store():
             print(f"   Total users: {stats['total_users']}")
             print(f"   Data directory: {stats['data_directory']}")
             
+            all = list(Path(config.memories_dir).parent.rglob("*"))
+            all_str ="\n".join([a.absolute() for a in all])
+            print(f"   Total files in data directory: {len(all)}")
             # Test 9: Delete memory
             print("\n🗑️  Test 9: Deleting memory...")
             deleted = memory_store.delete_memory(stored_memory3.id, "test_user_2")
@@ -146,7 +153,7 @@ def test_memory_store():
                 print(f"   - {file.name}")
             
             print("\n🎉 All tests completed successfully!")
-            
+            print("📂 Copied memory files to /tmp/victest")
         except Exception as e:
             print(f"❌ Test failed with error: {e}")
             import traceback
