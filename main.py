@@ -9,7 +9,7 @@ from src.memserv.interface.api import app
 from src.memserv.interface.mcp_interface import mcp
 from src.memserv.core.config import config
 from src.memserv.core.memory_store import MemoryStore
-
+from pathlib import Path
 
 def setup_logging(log_level: str = "info"):
     """Setup logging with rotation, keeping logs for 7 days."""
@@ -65,7 +65,7 @@ def initialize_service():
     logging.info(f"   - API Base: {config.api_base}")
     logging.info(f"   - LLM Model: {config.llm_model}")
     logging.info(f"   - Embedding Model: {config.embedding_model}")
-    logging.info(f"   - Data Directory: {config.data_dir}")
+    logging.info(f"   - Data Directory: {Path(config.data_dir).absolute()}")
     
     # 预初始化 MemoryStore（单例模式）
     memory_store = MemoryStore.get_instance()

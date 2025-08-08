@@ -38,30 +38,37 @@ async def store_memory(memory_input: MemoryInput):
 
 
 @app.post("/memories/query", response_model=MemoryResponse)
-async def query_memories(query: MemoryQuery):
+async def query_memories(query_data: Dict[str, Any]):
     """Query memories based on content similarity and optional tag filters."""
     try:
-        response = memory_store.query_memories(query)
+        # 提取include_archived参数
+        include_archived = query_data.pop("include_archived", False)
+        
+        # 创建MemoryQuery对象
+        query = MemoryQuery(**query_data)
+        
+        response = memory_store.query_memories(query, include_archived=include_archived)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/users/{user_id}/memories", response_model=List[Memory])
-async def get_user_memories(user_id: str, limit: int = Query(default=10, ge=1, le=100)):
+async def get_user_memories(user_id: str, limit: int = Query(default=10, ge=1, le=100), 
+                           include_archived: bool = Query(default=False)):
     """Get all memories for a specific user."""
     try:
-        memories = memory_store.get_user_memories(user_id, limit)
+        memories = memory_store.get_user_memories(user_id, limit, include_archived=include_archived)
         return memories
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/users/{user_id}/tags", response_model=List[str])
-async def get_user_tags(user_id: str):
+async def get_user_tags(user_id: str, include_archived: bool = Query(default=False)):
     """Get all unique tags for a specific user."""
     try:
-        tags = memory_store.get_user_tags(user_id)
+        tags = memory_store.get_user_tags(user_id, include_archived=include_archived)
         return tags
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -101,6 +108,23 @@ async def get_stats():
     try:
         stats = memory_store.get_stats()
         return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/memories/{user_id}/{memory_id}", response_model=Dict[str, Any])
+async def update_memory(user_id: str, memory_id: str, update_data: Dict[str, Any]):
+    """Update an existing memory by ID and user ID."""
+    try:
+        content = update_data.get("content")
+        if not content:
+            raise HTTPException(status_code=400, detail="Content is required")
+        
+        metadata = update_data.get("metadata")
+        result = memory_store.update_memory(memory_id, user_id, content, metadata)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
