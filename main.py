@@ -3,20 +3,28 @@ import argparse
 import asyncio
 import logging
 import os
+from pathlib import Path
 from logging.handlers import TimedRotatingFileHandler
 import uvicorn
-from src.memserv.interface.api import app
-from src.memserv.interface.mcp_interface import mcp
+import dotenv
+env_path = (Path(__file__).parent/ ".env").absolute()
+dotenv.load_dotenv(env_path) # load .env file before importing config
 from src.memserv.core.config import config
 from src.memserv.core.memory_store import MemoryStore
-from pathlib import Path
+
+
+
 
 def setup_logging(log_level: str = "info"):
     """Setup logging with rotation, keeping logs for 7 days."""
     # Create logs directory if it doesn't exist
-    log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
     
+    print("📂 Creating logs directory...")
+    log_dir = "logs"
+    log_dir  = Path(__file__).with_name(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "memserv.log"
+    print(f"📝 Logging to {log_path}")
     # Configure log level
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
     
@@ -36,12 +44,13 @@ def setup_logging(log_level: str = "info"):
     
     # Setup rotating file handler (daily rotation, keep 7 days)
     file_handler = TimedRotatingFileHandler(
-        filename=os.path.join(log_dir, "memory-service.log"),
+        filename=log_path,
         when="midnight",
         interval=1,
         backupCount=7,
         encoding="utf-8"
     )
+    
     file_handler.setFormatter(formatter)
     file_handler.setLevel(numeric_level)
     root_logger.addHandler(file_handler)
@@ -57,7 +66,7 @@ def setup_logging(log_level: str = "info"):
     logging.info(f"Log files location: {os.path.abspath(log_dir)}")
 
 
-def initialize_service():
+def initialize_service():    
     """预初始化服务，避免第一次请求时的延迟。"""
     assert config.api_key, (f"   - API Key: {'✅ Set' if config.api_key else '❌ Not Set'}")
     logging.info("🔧 Pre-initializing Memory Service...")
@@ -75,6 +84,7 @@ def initialize_service():
 
 
 def run_fastapi_server(host: str, port: int, reload: bool, log_level: str):
+    from src.memserv.interface.api import app
     """Run the FastAPI server."""
     logging.info(f"🚀 Starting Memory Service FastAPI on {host}:{port}")
     logging.info(f"📚 API Documentation: http://{host}:{port}/docs")
@@ -90,6 +100,7 @@ def run_fastapi_server(host: str, port: int, reload: bool, log_level: str):
 
 
 def run_mcp_server(host: str, port: int, path: str = "/mcp"):
+    from src.memserv.interface.mcp_interface import mcp
     """Run the FastMCP server with streamhttp transport."""
     logging.info(f"🔧 Starting Memory Service MCP Server on {host}:{port}{path}")
     logging.info(f"🔗 MCP Endpoint: http://{host}:{port}{path}")
@@ -105,6 +116,7 @@ def run_mcp_server(host: str, port: int, path: str = "/mcp"):
 
 
 async def run_mcp_server_async(host: str, port: int, path: str = "/mcp"):
+    from src.memserv.interface.mcp_interface import mcp
     """Run the FastMCP server asynchronously with streamhttp transport."""
     logging.info(f"🔧 Starting Memory Service MCP Server (async) on {host}:{port}{path}")
     logging.info(f"🔗 MCP Endpoint: http://{host}:{port}{path}")
@@ -138,7 +150,8 @@ def main():
     
     # Setup logging first
     setup_logging(args.log_level)
-    logging.info("Memory Service starting up...")
+    
+    logging.info(f"Memory Service starting up...{env_path=}")    
     
     # 预初始化服务（除非在开发模式下使用 reload）
     if not args.reload and not args.skip_warmup:
@@ -186,6 +199,7 @@ def run_mcp_only():
 
 
 def run_mcp_stdio():
+    from src.memserv.interface.mcp_interface import mcp
     """Run MCP server with STDIO transport (for MCP clients like Claude Desktop)."""
     initialize_service()
     logging.info("🔧 Starting Memory Service MCP Server with STDIO transport")

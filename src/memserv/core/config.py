@@ -1,7 +1,7 @@
 """Configuration for memory service."""
 import os
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator 
 
 
 class Config(BaseModel):
@@ -19,9 +19,9 @@ class Config(BaseModel):
     embed_batch_size: int = Field(default_factory=lambda: int(os.getenv("EMBED_BATCH_SIZE", "10")))
     
     # Storage settings
-    data_dir: str = Field(default="./data")
-    memories_dir: str = Field(default="./data/memories")
-    index_dir: str = Field(default="./data/index")
+    data_dir: str = Field(default_factory=lambda: os.getenv("DATA_DIR", None))
+    memories_dir: str = None
+    index_dir: str = None
     
     # Service settings
     host: str = Field(default="0.0.0.0")
@@ -65,6 +65,48 @@ class Config(BaseModel):
         )
     )
 
+        
+
+    @model_validator(mode='after')
+    def set_memories_dir(self):
+        # 如果 memories_dir 已经被设置，则不做任何改动
+        if self.memories_dir is not None:
+            return self
+        
+        # 否则，使用 data_dir 的值来设置 memories_dir
+        if self.data_dir is not None:
+            self.memories_dir = f"{self.data_dir}/memories"
+        else:
+            # 如果 data_dir 也没有设置，你可能需要抛出一个错误
+            raise ValueError("data_dir must be set to determine memories_dir")
+            
+        return self
+    @model_validator(mode='after')
+    def set_index_dir(self):
+        # 如果 index_dir已经被设置，则不做任何改动
+        if self.index_dir is not None:
+            return self
+        
+        # 否则，使用 data_dir 的值来设置 memories_dir
+        if self.data_dir is not None:
+            self.index_dir= f"{self.data_dir}/index"
+        else:
+            # 如果 data_dir 也没有设置，你可能需要抛出一个错误
+            raise ValueError("data_dir must be set to determine memories_dir")
+            
+        return self
 
 # Global config instance
-config = Config()
+
+
+if __name__ == "__main__":
+    import dotenv
+    dotenv.load_dotenv()
+    config = Config()
+    print(f"{config.api_base=}")
+    print(f"{config.data_dir=}")
+    print(f"{config.memories_dir=}")
+    print(f"{config.index_dir=}")
+
+else:    
+    config = Config()

@@ -1,5 +1,5 @@
 """Memory storage and retrieval using LlamaIndex."""
-import os
+
 import json
 import uuid
 import time
@@ -164,8 +164,8 @@ class MemoryStore:
     
     def _init_index(self):
         """Initialize or load existing vector index."""
-        if os.path.exists(str(self.index_dir)):
-            logger.info("正在从已存在的目录加载索引...")
+        if Path(str(self.index_dir)).exists():
+            logger.info(f"正在从已存在的目录加载索引...{self.index_dir}")
             
             # 1. 从持久化目录加载存储上下文
             storage_context = StorageContext.from_defaults(persist_dir=str(self.index_dir))
@@ -410,9 +410,9 @@ class MemoryStore:
             retrieved_nodes = retriever.retrieve(query.query)
             assert retrieved_nodes and len(retrieved_nodes) > 0, f"No nodes found for query: {query.query}"
         except Exception as e:
-            logger.info(f"Query error: {e}")
+            
             import traceback
-            traceback.logger.info_exc()
+            logger.info(f"Query error: {e}\n{traceback.format_exc()}")
             return MemoryResponse(results=[], total=0)
         
         
