@@ -1,0 +1,585 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Memory Service API",
+        "description": "A service for storing and retrieving user memories with AI-powered tagging",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/memories": {
+            "post": {
+                "summary": "Store Memory",
+                "description": "Store a new memory with auto-generated tags.",
+                "operationId": "store_memory_memories_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MemoryInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Memory"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/memories/query": {
+            "post": {
+                "summary": "Query Memories",
+                "description": "Query memories based on content similarity and optional tag filters.",
+                "operationId": "query_memories_memories_query_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": true,
+                                "type": "object",
+                                "title": "Query Data"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MemoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user_id}/memories": {
+            "get": {
+                "summary": "Get User Memories",
+                "description": "Get all memories for a specific user.",
+                "operationId": "get_user_memories_users__user_id__memories_get",
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "User Id"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "default": 10,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "include_archived",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "Include Archived"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Memory"
+                                    },
+                                    "title": "Response Get User Memories Users  User Id  Memories Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user_id}/tags": {
+            "get": {
+                "summary": "Get User Tags",
+                "description": "Get all unique tags for a specific user.",
+                "operationId": "get_user_tags_users__user_id__tags_get",
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "User Id"
+                        }
+                    },
+                    {
+                        "name": "include_archived",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "Include Archived"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "title": "Response Get User Tags Users  User Id  Tags Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/memories/{user_id}/{memory_id}": {
+            "get": {
+                "summary": "Get Memory By Id",
+                "description": "Get a specific memory by ID and user ID.",
+                "operationId": "get_memory_by_id_memories__user_id___memory_id__get",
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "User Id"
+                        }
+                    },
+                    {
+                        "name": "memory_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Memory Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Memory"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "summary": "Delete Memory",
+                "description": "Delete a specific memory by ID and user ID.",
+                "operationId": "delete_memory_memories__user_id___memory_id__delete",
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "User Id"
+                        }
+                    },
+                    {
+                        "name": "memory_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Memory Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "summary": "Update Memory",
+                "description": "Update an existing memory by ID and user ID.",
+                "operationId": "update_memory_memories__user_id___memory_id__put",
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "User Id"
+                        }
+                    },
+                    {
+                        "name": "memory_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Memory Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true,
+                                "title": "Update Data"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "title": "Response Update Memory Memories  User Id   Memory Id  Put"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/stats": {
+            "get": {
+                "summary": "Get Stats",
+                "description": "Get service statistics.",
+                "operationId": "get_stats_stats_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": true,
+                                    "type": "object",
+                                    "title": "Response Get Stats Stats Get"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "summary": "Health Check",
+                "description": "Health check endpoint.",
+                "operationId": "health_check_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "Memory": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Unique memory identifier"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "The memory content"
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "title": "User Id",
+                        "description": "User identifier"
+                    },
+                    "tags": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Tags",
+                        "description": "Auto-generated tags"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At",
+                        "description": "Creation timestamp"
+                    },
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Metadata",
+                        "description": "Additional metadata"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "content",
+                    "user_id"
+                ],
+                "title": "Memory",
+                "description": "Memory model with generated tags and embeddings."
+            },
+            "MemoryInput": {
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "The content to remember"
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "title": "User Id",
+                        "description": "User identifier"
+                    },
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Metadata",
+                        "description": "Additional metadata"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "content",
+                    "user_id"
+                ],
+                "title": "MemoryInput",
+                "description": "Input model for storing memories."
+            },
+            "MemoryResponse": {
+                "properties": {
+                    "results": {
+                        "items": {
+                            "$ref": "#/components/schemas/MemoryResult"
+                        },
+                        "type": "array",
+                        "title": "Results",
+                        "description": "Retrieved memories"
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total",
+                        "description": "Total number of results"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "results",
+                    "total"
+                ],
+                "title": "MemoryResponse",
+                "description": "Response model for memory queries."
+            },
+            "MemoryResult": {
+                "properties": {
+                    "memory": {
+                        "$ref": "#/components/schemas/Memory",
+                        "description": "The retrieved memory"
+                    },
+                    "score": {
+                        "type": "number",
+                        "title": "Score",
+                        "description": "Similarity score"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "memory",
+                    "score"
+                ],
+                "title": "MemoryResult",
+                "description": "Result model for memory retrieval."
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    }
+}
