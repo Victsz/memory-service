@@ -22,7 +22,8 @@ from llama_index.core.output_parsers import PydanticOutputParser
 
 from .models import Memory, MemoryInput, MemoryQuery, MemoryResult, MemoryResponse
 from .config import config
-
+import logging
+logger = logging.getLogger(__name__)
 # 系统保留标签常量
 SYSTEM_TAG_ARCHIVED = "archived_sys"  # 系统软删除标签
 SYSTEM_TAG_PREFIX = "original_sys:"    # 原记忆引用前缀
@@ -45,11 +46,11 @@ def retry_on_failure(max_attempts: int = None, delay: int = None) -> Callable:
                 except Exception as e:
                     last_exception = e
                     if attempt < actual_max_attempts - 1:  # 不是最后一次尝试
-                        print(f"Attempt {attempt + 1}/{actual_max_attempts} failed for {func.__name__}: {e}")
-                        print(f"Retrying in {actual_delay} seconds...")
+                        logger.info(f"Attempt {attempt + 1}/{actual_max_attempts} failed for {func.__name__}: {e}")
+                        logger.info(f"Retrying in {actual_delay} seconds...")
                         time.sleep(actual_delay)
                     else:
-                        print(f"All {actual_max_attempts} attempts failed for {func.__name__}")
+                        logger.info(f"All {actual_max_attempts} attempts failed for {func.__name__}")
             
             # 所有重试都失败，抛出最后一个异常
             raise last_exception
@@ -89,7 +90,7 @@ class MemoryStore:
         if self._initialized:
             return
             
-        print("🔧 Initializing MemoryStore...")
+        logger.info("🔧 Initializing MemoryStore...")
         
         self.data_dir = Path(config.data_dir)
         self.memories_dir = Path(config.memories_dir)
@@ -100,10 +101,10 @@ class MemoryStore:
         self.memories_dir.mkdir(exist_ok=True)
         self.index_dir.mkdir(exist_ok=True)
         
-        print(f"📁 Data directories created: {self.data_dir}")
+        logger.info(f"📁 Data directories created: {self.data_dir}")
         
         # Initialize LLM and embedding model following LlamaIndex guidance
-        print("🤖 Initializing LLM and embedding models...")
+        logger.info("🤖 Initializing LLM and embedding models...")
         self.embed_model = OpenAILikeEmbedding(
             model_name=config.embedding_model,
             api_base=config.api_base,
@@ -125,7 +126,7 @@ class MemoryStore:
         Settings.embed_model = self.embed_model
         Settings.llm = self.llm
         
-        print(f"✅ Models initialized - LLM: {config.llm_model}, Embedding: {config.embedding_model}")
+        logger.info(f"✅ Models initialized - LLM: {config.llm_model}, Embedding: {config.embedding_model}")
         
         # Initialize or load index
         self._init_index()
@@ -134,21 +135,21 @@ class MemoryStore:
         self._warmup_models()
         
         self._initialized = True
-        print("✅ MemoryStore initialization completed!")
+        logger.info("✅ MemoryStore initialization completed!")
     
     def _warmup_models(self):
         """预热模型，避免第一次调用时的延迟。配置错误时立即失败。"""
         try:
-            print("🔥 Warming up models...")
+            logger.info("🔥 Warming up models...")
             
             # 预热 LLM
             warmup_prompt = "Generate one tag for: test"
             self.llm.complete(warmup_prompt)
-            print("✅ LLM warmed up")
+            logger.info("✅ LLM warmed up")
             
             # 预热 Embedding 模型
             self.embed_model.get_text_embedding("test warmup text")
-            print("✅ Embedding model warmed up")
+            logger.info("✅ Embedding model warmed up")
             
         except Exception as e:
             # Fail Fast: 预热失败说明API配置有问题，应该立即失败
@@ -164,7 +165,7 @@ class MemoryStore:
     def _init_index(self):
         """Initialize or load existing vector index."""
         if os.path.exists(str(self.index_dir)):
-            print("正在从已存在的目录加载索引...")
+            logger.info("正在从已存在的目录加载索引...")
             
             # 1. 从持久化目录加载存储上下文
             storage_context = StorageContext.from_defaults(persist_dir=str(self.index_dir))
@@ -176,7 +177,7 @@ class MemoryStore:
             )
 
         else:
-            print("未找到存在的索引，正在创建新索引...")
+            logger.info("未找到存在的索引，正在创建新索引...")
             
             # 1. 加载你的原始文档
             documents = []#SimpleDirectoryReader(str(self.data_dir)).load_data()
@@ -195,7 +196,7 @@ class MemoryStore:
         #     similarity_top_k=10
         # )
 
-        print("索引初始化完成，可以开始查询。")
+        logger.info("索引初始化完成，可以开始查询。")
     
     def _generate_tags(self, content: str) -> List[str]:
         """Generate tags for content using LLM structured output with retry logic."""
@@ -227,17 +228,17 @@ class MemoryStore:
                     if tag not in SYSTEM_TAGS and not tag.startswith("original_sys:"):
                         filtered_tags.append(tag)
                     else:
-                        print(f"Warning: LLM generated system reserved tag '{tag}', filtered out")
+                        logger.info(f"Warning: LLM generated system reserved tag '{tag}', filtered out")
                 
                 return filtered_tags
                 
             except Exception as e:
-                print(f"Error generating tags (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                logger.info(f"Error generating tags (attempt {attempt + 1}/{max_retries + 1}): {e}")
                 if attempt == max_retries:
-                    print("All tag generation attempts failed, returning empty list")
+                    logger.info("All tag generation attempts failed, returning empty list")
                     return []
                 else:
-                    print(f"Retrying tag generation...")
+                    logger.info(f"Retrying tag generation...")
                     continue
     
 
@@ -278,7 +279,7 @@ class MemoryStore:
                 final_content = f"{content}\n\n---\n\nExpanded explanation:\n{expanded_content}"
                 return final_content
             except Exception as e:
-                print(f"Content expansion failed, using original content: {e}")
+                logger.info(f"Content expansion failed, using original content: {e}")
                 # Gracefully fallback to original content without expansion
                 return content
         
@@ -321,14 +322,31 @@ class MemoryStore:
         
         memory.tags = all_tags
         
-        # Create document for indexing
+        # Create document for indexing with structured metadata
         doc_metadata = {
             "memory_id": memory.id,
             "user_id": memory.user_id,
-            "tags": memory.tags,
             "created_at": memory.created_at.isoformat(),
+            "is_archived": "true" if SYSTEM_TAG_ARCHIVED in memory.tags else "false",
             "metadata": memory.metadata
         }
+        
+        # Add individual tag fields for efficient filtering
+        user_tags = []
+        for tag in memory.tags:
+            if tag.startswith(SYSTEM_TAG_PREFIX):
+                # System tags as boolean fields
+                system_key = tag.replace(SYSTEM_TAG_PREFIX, "").lower()
+                doc_metadata[f"system_{system_key}"] = True
+            elif tag not in SYSTEM_TAGS:
+                # User tags as list for IN operator
+                user_tags.append(tag)
+        
+        if user_tags:
+            doc_metadata["user_tags"] = user_tags
+        
+        # Store all tags for backward compatibility
+        doc_metadata["tags"] = memory.tags
         
         document = Document(
             text=memory.content,
@@ -345,101 +363,69 @@ class MemoryStore:
         return memory
     
     def query_memories(self, query: MemoryQuery, include_archived: bool = False) -> MemoryResponse:
-        """Query memories based on similarity."""
-        # Create query engine
-        query_engine = self.index.as_query_engine(
-            similarity_top_k=query.limit * config.query_similarity_multiplier  # Get more to filter by user
+        """Query memories based on similarity using MetadataFilters for efficient filtering."""
+        from llama_index.core.vector_stores import (
+            MetadataFilter,
+            MetadataFilters,
+            FilterOperator,
+            FilterCondition,
+            ExactMatchFilter
         )
         
-        # Build query string
-        query_str = query.query
-        if query.tags:
-            query_str += f" Tags: {', '.join(query.tags)}"
+        # Build metadata filters
+        filter_list = [
+            # Always filter by user_id
+            ExactMatchFilter(key="user_id", value=query.user_id)
+        ]
         
-        # Execute query - 使用retriever而不是query_engine来避免nodes为None的问题
+        # Filter archived memories unless explicitly requested
+        if not include_archived:
+            filter_list.append(
+                MetadataFilter(key="is_archived", operator=FilterOperator.EQ, value="false")
+            )
+        
+        # # Filter by tags if specified
+        # if query.tags:
+        #     filter_list.append(
+        #         MetadataFilter(key="user_tags", operator=FilterOperator.IN, value=query.tags)
+        #     )
+        if query.tags:
+            
+            logger.warn(f"ot support tag filter for : {query.tags=}")
+        
+        filters = MetadataFilters(
+            filters=filter_list,
+            condition=FilterCondition.AND
+        )
+        
+        # Use retriever with metadata filters
         retrieved_nodes = None
         try:
-            # 使用retriever直接获取节点，避免query_engine的问题
             retriever = self.index.as_retriever(
-                similarity_top_k=query.limit * config.query_similarity_multiplier
+                similarity_top_k=query.limit,
+                filters=filters
             )
-            print(f"retriever {query_str=}")
-            try:
-                retrieved_nodes = retriever.retrieve(query_str)
-            except:
-                pass
             
-            # 如果retriever也失败，尝试直接查询向量存储
-            if not retrieved_nodes:
-                print(f"Retriever returned no nodes, trying direct vector store query...")
-                # 直接查询向量存储
-                from llama_index.core.vector_stores.types import VectorStoreQuery
-                query_embedding = self.embed_model.get_text_embedding(query_str)
-                vector_query = VectorStoreQuery(
-                    query_embedding=query_embedding,
-                    similarity_top_k=query.limit * config.query_similarity_multiplier,
-                    mode="default"
-                )
-                
-                vector_result = self.index.storage_context.vector_store.query(vector_query)
-                
-                # 手动构建节点
-                if vector_result.ids and vector_result.similarities:
-                    docstore = self.index.storage_context.docstore
-                    retrieved_nodes = []
-                    
-                    for doc_id, similarity in zip(vector_result.ids, vector_result.similarities):
-                        if doc_id in docstore.docs:
-                            doc = docstore.docs[doc_id]
-                            from llama_index.core.schema import NodeWithScore, TextNode
-                            
-                            # 创建TextNode
-                            text_node = TextNode(
-                                text=doc.text,
-                                metadata=doc.metadata,
-                                id_=doc_id
-                            )
-                            
-                            # 创建NodeWithScore
-                            node_with_score = NodeWithScore(
-                                node=text_node,
-                                score=float(similarity)
-                            )
-                            retrieved_nodes.append(node_with_score)
-                else:
-                    print(f"No results from direct vector store query")
-                    return MemoryResponse(results=[], total=0)
-            
+            # Execute query with clean query string (no tag concatenation)
+            retrieved_nodes = retriever.retrieve(query.query)
+            assert retrieved_nodes and len(retrieved_nodes) > 0, f"No nodes found for query: {query.query}"
         except Exception as e:
-            print(f"Query error: {e}")
+            logger.info(f"Query error: {e}")
             import traceback
-            traceback.print_exc()
+            traceback.logger.info_exc()
             return MemoryResponse(results=[], total=0)
         
-        # Check if we have retrieved nodes
-        if not retrieved_nodes:
-            print(f"No nodes retrieved for query: {query_str}")
-            return MemoryResponse(results=[], total=0)
         
+        
+        # Convert nodes to Memory objects
         results = []
         for node_with_score in retrieved_nodes:
             node = node_with_score.node
-            # Filter by user_id
-            if node.metadata.get("user_id") != query.user_id:
-                continue
-            
-            # Filter archived memories unless explicitly requested
-            node_tags = node.metadata.get("tags", [])
-            if not include_archived and SYSTEM_TAG_ARCHIVED in node_tags:
-                continue
-            
-            # Filter by tags if specified
-            if query.tags:
-                if not any(tag in node_tags for tag in query.tags):
-                    continue
-            
-            # Create Memory object directly from node data (no file loading needed)
             try:
+                if not include_archived and node.metadata.get("is_archived", "false") == "true":
+                    # breakpoint()
+                    continue
+                # breakpoint()
                 memory = Memory(
                     id=node.metadata.get("memory_id"),
                     content=node.text,
@@ -455,7 +441,7 @@ class MemoryStore:
                 )
                 results.append(result)
             except Exception as e:
-                print(f"Error creating memory from node: {e}")
+                logger.info(f"Error creating memory from node: {e}")
                 continue
             
             if len(results) >= query.limit:
@@ -501,7 +487,7 @@ class MemoryStore:
                 )
                 memories.append(memory)
             except Exception as e:
-                print(f"Error creating memory from document {doc_id}: {e}")
+                logger.info(f"Error creating memory from document {doc_id}: {e}")
                 continue
         
         # Sort by creation time (newest first)
@@ -597,7 +583,7 @@ class MemoryStore:
         try:
             return self._archive_memory(memory_id, user_id)
         except Exception as e:
-            print(f"Archive memory failed: {e}")
+            logger.info(f"Archive memory failed: {e}")
             return False
     
     @retry_on_failure()
@@ -614,7 +600,7 @@ class MemoryStore:
         
         # 检查是否已经被归档
         if SYSTEM_TAG_ARCHIVED in memory.tags:
-            print(f"Memory {memory_id} is already archived")
+            logger.info(f"Memory {memory_id} is already archived")
             return True
         
         try:
@@ -622,13 +608,31 @@ class MemoryStore:
             updated_tags = memory.tags.copy()
             updated_tags.append(SYSTEM_TAG_ARCHIVED)
             
+            # Create structured metadata consistent with store_memory
             updated_metadata = {
                 "memory_id": memory.id,
                 "user_id": memory.user_id,
-                "tags": updated_tags,
                 "created_at": memory.created_at.isoformat(),
+                "is_archived": "true",  # Set archived flag as string
                 "metadata": memory.metadata
             }
+            
+            # Add individual tag fields for efficient filtering
+            user_tags = []
+            for tag in updated_tags:
+                if tag.startswith(SYSTEM_TAG_PREFIX):
+                    # System tags as boolean fields
+                    system_key = tag.replace(SYSTEM_TAG_PREFIX, "")
+                    updated_metadata[f"system_{system_key}"] = True
+                elif tag not in SYSTEM_TAGS:
+                    # User tags as list for IN operator
+                    user_tags.append(tag)
+            
+            if user_tags:
+                updated_metadata["user_tags"] = user_tags
+            
+            # Store all tags for backward compatibility
+            updated_metadata["tags"] = updated_tags
             
             from llama_index.core import Document
             updated_document = Document(
@@ -640,11 +644,11 @@ class MemoryStore:
             # 使用LlamaIndex的update_ref_doc方法更新文档
             self.index.update_ref_doc(updated_document)
             
-            print(f"Memory {memory_id} archived successfully using update_ref_doc")
+            logger.info(f"Memory {memory_id} archived successfully using update_ref_doc")
             return True
             
         except Exception as e:
-            print(f"Error archiving memory {memory_id}: {e}")
+            logger.info(f"Error archiving memory {memory_id}: {e}")
             raise
     
     def get_memory_by_id(self, memory_id: str, user_id: str) -> Optional[Memory]:
@@ -670,7 +674,7 @@ class MemoryStore:
                     )
                     return memory
                 except Exception as e:
-                    print(f"Error creating memory from document {doc_id}: {e}")
+                    logger.info(f"Error creating memory from document {doc_id}: {e}")
                     break
         
         return None
