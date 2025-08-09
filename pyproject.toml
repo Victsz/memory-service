@@ -71,5 +71,6 @@ ignore = []
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
-"pytest>=8.4.1",
+    "pylint>=3.3.7",
+    "pytest>=8.4.1",
 ]

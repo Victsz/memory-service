@@ -1,0 +1,39 @@
+[MASTER]
+# 忽略测试文件和特定目录
+ignore-patterns=test_.*?\.py, migrations
+# 并行检查（根据CPU核心数调整）
+jobs=4
+
+[MESSAGES CONTROL]
+# 仅保留错误（E）和致命错误（F）类消息，禁用其他类型
+disable=all
+enable=E, F
+
+# 可选：显式禁用某些过于严格的错误检查（根据项目需求调整）
+# disable=E1101, E1136  # 示例：禁用未解析的成员和无效的迭代操作检查
+
+[REPORTS]
+# 关闭评分报告和统计信息（减少干扰）
+output-format=text
+reports=no
+
+[FORMAT]
+# 宽松的格式要求（避免风格类警告）
+max-line-length=120  # 允许较长行
+indent-string='    '  # 缩进4空格
+single-line-if-stmt=no  # 允许单行if语句
+
+[DESIGN]
+# 宽松的设计规范
+max-args=8  # 函数最多8个参数
+max-locals=20  # 函数内最多20个局部变量
+max-returns=6  # 函数最多6个return
+
+[TYPECHECK]
+# 类型检查宽松设置
+ignored-modules=legacy_module  # 忽略特定模块的类型检查
+ignored-classes=OldAPI  # 忽略特定类的类型检查
+
+[VARIABLES]
+# 变量命名宽松设置
+good-names=i, j, k, ex, _, x, y  # 允许短变量名

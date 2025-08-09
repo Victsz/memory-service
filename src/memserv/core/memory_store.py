@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any, Callable
 from datetime import datetime
 from functools import wraps
 
-from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Document, Settings
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Document, Settings,load_index_from_storage
 from llama_index.core.storage.storage_context import StorageContext
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.core.storage.index_store import SimpleIndexStore
@@ -163,21 +163,39 @@ class MemoryStore:
     
     def _init_index(self):
         """Initialize or load existing vector index."""
-        try:
-            # Try to load existing index
-            storage_context = StorageContext.from_defaults(
-                docstore=SimpleDocumentStore.from_persist_dir(persist_dir=str(self.index_dir)),
-                vector_store=SimpleVectorStore.from_persist_dir(persist_dir=str(self.index_dir)),
-                index_store=SimpleIndexStore.from_persist_dir(persist_dir=str(self.index_dir)),
+        if os.path.exists(str(self.index_dir)):
+            print("正在从已存在的目录加载索引...")
+            
+            # 1. 从持久化目录加载存储上下文
+            storage_context = StorageContext.from_defaults(persist_dir=str(self.index_dir))
+            
+            # 2. 从存储上下文加载索引
+            self.index = load_index_from_storage(
+                storage_context=storage_context,
+                embed_model=self.embed_model
             )
+
+        else:
+            print("未找到存在的索引，正在创建新索引...")
+            
+            # 1. 加载你的原始文档
+            documents = []#SimpleDirectoryReader(str(self.data_dir)).load_data()
+            
+            # 2. 从文档创建新索引
             self.index = VectorStoreIndex.from_documents(
-                [], storage_context=storage_context, embed_model=self.embed_model
+                documents,
+                embed_model=self.embed_model
             )
-            print("Loaded existing index")
-        except:
-            # Create new index
-            self.index = VectorStoreIndex([], embed_model=self.embed_model)
-            print("Created new index")
+            
+            # 3. 将新创建的索引持久化（保存）到磁盘
+            self.index.storage_context.persist(persist_dir=str(self.index_dir))
+
+        # 无论加载还是新建，最后都创建查询引擎
+        # self.query_engine = self.index.as_query_engine(
+        #     similarity_top_k=10
+        # )
+
+        print("索引初始化完成，可以开始查询。")
     
     def _generate_tags(self, content: str) -> List[str]:
         """Generate tags for content using LLM structured output with retry logic."""
